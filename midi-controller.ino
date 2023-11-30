@@ -2,7 +2,7 @@
   File: midi-controller.ino
   Author: Elias Håkansson Wennerlund
   Date: 2023-10-12
-  Description: A midi music controller with an LCD screen.
+  Description: A music player with an LCD screen for visuals.
 */
 
 #define ENCODER_DO_NOT_USE_INTERRUPTS
@@ -14,8 +14,11 @@
 #include <MCUFRIEND_kbv.h>
 #include <SD.h>
 #include <SPI.h>
-
-// #include "UI.h"
+// Music with SD
+// https://www.instructables.com/Audio-Player-Using-Arduino-With-Micro-SD-Card/
+#include <TMRpcm.h>
+#include <pcmConfig.h>
+#include <pcmRF.h>
 
 #define SERIAL_DEBUG
 
@@ -146,4 +149,4 @@ void updateLibrary() {
   tone(Pin::SPEAKER, 1000, 50);
 }
 
-void playSong() {}
+void playSong(Song song) {}
