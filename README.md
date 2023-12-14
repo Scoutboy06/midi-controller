@@ -1,57 +1,43 @@
-# Audio player and GUI application
+# Arduino Music Player
 
-This project is a simple audio player and graphical user interface (GUI) application that I made as part of a school project in my second year of high school. It reads music files from a micro-SD card and displays the list of songs on a 3.5" TFT ILI9488 LCD screen. The user can select and play songs using a rotary encoder and a speaker.
+This project is a simple music player that uses a rotary encoder, an OLED screen, and a speaker to play different songs. The songs are stored in the music folder as arrays of notes and durations. You can select a song from the list using the rotary encoder and play it by pressing the button on the encoder. The OLED screen will display the title of the selected song and a rectangle around it.
 
-## Installation
+## Requirements
 
-To install and run this project, you will need the following hardware components:
-- Arduino Mega*
-- Rotary Encoder
-- Speaker
-- 3.5" TFT ILI9488 LCD screen
-- Micro SD card (ILI9488 has a reader built-in)
+To run this project, you will need the following components:
 
-*&nbsp;The orignal project uses an Arduino Mega, but it doesn't work together with the ILI9488 from the get-go. This is because the pin that the ILI9488 uses for the AD card is pin 10 on the UNO, but 53 on the Mega. There are essentially two solutions for this:
-1. Solder pin 53 together with pin 10. This was a no-opt for me though, since the hardware was borrowed from the school.
-2. Overwrite the Arduino SD library. The original and modified files can be found in the `/original_libraries` and `/modified_libraries` folders respectively.
+Arduino Uno or compatible board
+- Rotary encoder with switch
+- OLED screen (128x64 pixels, I2C interface)
+- Speaker or buzzer
+- Breadboard and jumper wires
 
-You will also need the following software tools:
-* Arduino IDE (or other preferred IDEs, I used VSCode for example)
-* [Adafruit ILI9341](https://www.arduino.cc/reference/en/libraries/adafruit-ili9341/) library
-* [Adafruit GFX](https://www.arduino.cc/reference/en/libraries/adafruit-gfx-library/) library
-* [Encoder](https://www.arduino.cc/reference/en/libraries/encoder/) library
+You will also need the following libraries:
+- Adafruit_GFX
+- Adafruit_SSD1306
+- Encoder
 
-To install the libraries, you can follow the instruction from the [Arduino website](https://docs.arduino.cc/software/ide-v1/tutorials/installing-libraries).
+You can install them using the Arduino Library Manager or download them from their respective websites.
 
-To install the modified SD library, you can replace the original files in the Arduino installation folder with the ones in the `/modified_libraries` folder.
+## Wiring
 
-To upload the code to the Arduino Mega, you can follow the instruction from the [Arduino website](https://support.arduino.cc/hc/en-us/articles/4733418441116-Upload-a-sketch-in-Arduino-IDE).
+The pins used are:
+- SW: 23 (Rotary encoder Switch (Button))
+- DT: 25 (Rotary encoder Data)
+- CLK: 27 (Rotary encoder Clock)
+- SPEAKER: 11
+
+You can change them in the code if you want, but make sure to update the Encoder and Adafruit_SSD1306 constructors accordingly.
 
 ## Usage
 
-To use this project, you need to prepare a micro-SD card with some music files in the `.wav` format. The `.wav` files also need to have
-* an 8-bit resolution,
-* 16000 Hz frequency,
-* mono audio,
-* and have the unsigned 8-bit PCM format.
+To use this project, upload the code to your Arduino board and power it on. You should see a list of songs on the OLED screen. You can rotate the encoder to scroll through the list and press the button to play the selected song. The speaker will play the melody of the song and the OLED screen will show a filled rectangle around the selected song.
 
-I recommend using [this](https://audio.online-convert.com/convert-to-wav) website to convert audio files to the correct format.
+You can add more songs to the project by creating new files in the music folder and adding them to the songs array in the code. Each song file should contain two arrays: one for the notes and one for the durations. The notes should be defined using the constants in the NOTES.h file. The durations should be negative for dotted notes and positive for normal notes. The tempo of the song should also be specified in the Song struct.
 
-These `.wav` files then need to be placed in a folder called `/music` on the micro-SD card.
+As an example, you can look at `music/nokia.h`.
 
-## Features
+## Credits
 
-This project has the following features:
-* Reads music files from a micro-SD card
-* Displays the list of songs on a LCD screen
-* Allows the user to select and play songs using a rotary endoer and a speaker
-* Shows the song name and duration on the GUI
-* Supports pause, resume, and stop functions.
-
-## Limitations
-
-This project has the following limitations:
-* Only works with the Arduino Mega and the ILI9488 LCD screen
-* Only supports the `.wav` format for the music files
-* Does not support shuffle, repeat, or volume control functions
+This project is inspired by this GitHub repository by Robson Couto, who created many songs for Arduino using the tone() function. Some of the songs in this project are modified from his code. The original songs are licensed under the MIT License.
 
