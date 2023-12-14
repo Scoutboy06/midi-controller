@@ -61,8 +61,6 @@ Song songs[] = {
     {"Star Wars", star_wars, 108, 176},
     {"Mario Intro", mario, 200, 642},
     {"Mii Channel", mii_channel, 114, 572},
-    // {"Never Gonna Give Y", nevergonnagiveyouup, 114, 680},
-    // {"Nokia", nokia, 180, 26},
 };
 const int numberOfSongs = sizeof(songs) / sizeof(songs[0]);
 
@@ -77,12 +75,11 @@ bool isPlaying = false;
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("Initializing...");
 
   if (!oled.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
     Serial.println(F("SSD1306 allocation failed"));
     for (;;)
-      ;  // Don't proceed, loop forever
+      ;
   }
 
   pinMode(Pin::SPEAKER, OUTPUT);
@@ -100,23 +97,7 @@ void loop() {
 
   // Has the rotary encoder been rotated?
   if (newRotation != prevRotation) {
-    // Clamp the value of newRotation
-    if (newRotation < 0) {
-      newRotation = 0;
-      rotor.write(0);
-    } else if (newRotation > numberOfSongs - 1) {
-      newRotation = numberOfSongs - 1;
-      rotor.write(numberOfSongs - 1);
-    }
-
-    if (newRotation == Dir::CLOCKWISE) {
-      rotationDirection = Dir::CLOCKWISE;
-    } else {
-      rotationDirection = Dir::COUNTER_CLOCKWISE;
-    }
-
-    selectedSongIndex = newRotation;
-    prevRotation = newRotation;
+    updateRotor();
 
     Serial.println(String(newRotation));
     prevSelectedSongIndex = selectedSongIndex;
@@ -124,21 +105,46 @@ void loop() {
   }
 }
 
+void updateRotor() {
+  // Clamp the value of newRotation between 0 and numberOfSongs - 1
+  if (newRotation < 0) {
+    newRotation = 0;
+    rotor.write(0);
+  } else if (newRotation > numberOfSongs - 1) {
+    newRotation = numberOfSongs - 1;
+    rotor.write(numberOfSongs - 1);
+  }
+
+  if (newRotation == Dir::CLOCKWISE) {
+    rotationDirection = Dir::CLOCKWISE;
+  } else {
+    rotationDirection = Dir::COUNTER_CLOCKWISE;
+  }
+
+  selectedSongIndex = newRotation;
+  prevRotation = newRotation;
+}
+
 void renderSongList() {
   oled.clearDisplay();
 
+  // Render each song in songs[]
   for (int i = 0; i < numberOfSongs; ++i) {
-    int x = itemMarginLeft;
-    int y = (i + 1) * itemMarginTop + i * itemHeight;
+    int x = itemMarginLeft;                            // Offset x-value
+    int y = (i + 1) * itemMarginTop + i * itemHeight;  // Offset y-value
 
+    // Is it the selected song?
     if (i == selectedSongIndex) {
+      // Render a white rectangle with black text
       oled.fillRect(x, y, itemWidth, itemHeight, WHITE);
       oled.setTextColor(BLACK);
     } else {
+      // Render a transparent rectangle with white corners and white text
       oled.drawRect(x, y, itemWidth, itemHeight, WHITE);
       oled.setTextColor(WHITE);
     }
 
+    // Render the song title
     oled.setCursor(x * 2, y + 3);
     oled.print(songs[i].title);
   }
@@ -146,9 +152,12 @@ void renderSongList() {
   oled.display();
 }
 
+// Modified code inspired by https://github.com/robsoncouto/arduino-songs
 void playSong(Song song) {
-  isPlaying = true;
+  // Calculates the duration of a whole note in milliseconds
   int wholenote = (60000 * 4) / song.tempo;
+  // Used to calculate the duration of the note, since musical notes are
+  // expressed in 1/n notation, fourths, eights, sixteenths, etc.
   int divider = 0;
   int noteDuration = 0;
 
@@ -157,15 +166,15 @@ void playSong(Song song) {
 
     noteDuration = wholenote / abs(divider);
 
+    // dotted notes are represented with negative durations
     if (divider < 0) {
       noteDuration *= 1.5;
     }
 
+    // We only play the note for 90% of the duration, leaving 10% as a pause
     tone(Pin::SPEAKER, pgm_read_word_near(song.melody + thisNote),
          noteDuration * 0.9);
     delay(noteDuration);
     noTone(Pin::SPEAKER);
   }
-
-  isPlaying = false;
 }
