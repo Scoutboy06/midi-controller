@@ -1,152 +1,171 @@
 /*
   File: midi-controller.ino
   Author: Elias Håkansson Wennerlund
-  Date: 2023-10-12
+  Date: 2023-12-13
   Description: A music player with an LCD screen for visuals.
 */
 
-#define ENCODER_DO_NOT_USE_INTERRUPTS
-
 #include <Adafruit_GFX.h>
-#include <Adafruit_ILI9341.h>
-// #include <ArduinoSTL.h>
+#include <Adafruit_SSD1306.h>
 #include <Encoder.h>
-#include <MCUFRIEND_kbv.h>
-#include <SD.h>
-#include <SPI.h>
-// Music with SD
-// https://www.instructables.com/Audio-Player-Using-Arduino-With-Micro-SD-Card/
-#include <TMRpcm.h>
-#include <pcmConfig.h>
-#include <pcmRF.h>
+#include <Wire.h>
 
-#define SERIAL_DEBUG
+#include "music/NOTES.h"
+#include "music/mario.h"
+#include "music/mii_channel.h"
+#include "music/nevergonnagiveyouup.h"
+#include "music/nokia.h"
+#include "music/star_wars.h"
 
-enum Dir { CLOCKWISE = 0, COUNTER_CLOCKWISE = 1 };
+// -------- Pins -------- //
+
 enum Pin {
-  SW = 23,   // Rotary encoder Switch
+  SW = 23,   // Rotary encoder Switch (Button)
   DT = 25,   // Rotary encoder Data
   CLK = 27,  // Rotary encoder Clock
-  SPEAKER = 53
+  SPEAKER = 11
 };
+
+// -------- Rotary Encoder -------- //
+
+#define ENCODER_DO_NOT_USE_INTERRUPTS
+enum Dir { CLOCKWISE = 0, COUNTER_CLOCKWISE = 1 };
+Encoder rotor(Pin::CLK, Pin::DT);
+
+long prevRotation = -999;
+int rotationDirection = Dir::CLOCKWISE;
+
+// -------- OLED Screen -------- //
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+
+const int itemMarginTop = 2;
+const int itemMarginLeft = 6;
+const int itemHeight = 16;
+const int itemWidth = SCREEN_WIDTH - 2 * itemMarginLeft;
+const int itemsOnScreen = SCREEN_HEIGHT / (itemMarginTop + itemHeight);
+
+Adafruit_SSD1306 oled(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+
+// -------- Music -------- //
 
 struct Song {
   String title;
-  String fileName;
+  const int* melody;
+  int tempo;
+  int noteCount;
 };
 
-Encoder rotor(Pin::DT, Pin::SW);
+Song songs[] = {
+    {"Star Wars", star_wars, 108, 176},
+    {"Mario Intro", mario, 200, 642},
+    {"Mii Channel", mii_channel, 114, 572},
+    // {"Never Gonna Give Y", nevergonnagiveyouup, 114, 680},
+    // {"Nokia", nokia, 180, 26},
+};
+const int numberOfSongs = sizeof(songs) / sizeof(songs[0]);
 
-int rotationDirection = Dir::CLOCKWISE;
-int CLK_state;
-int prev_CLK_state;
-int selectedSongIndex = 0;
-int prevSelectedSongIndex = 0;
-int scrollTop = 0;
-int prevScrollTop = 0;
+unsigned int selectedSongIndex = 0;
+unsigned int prevSelectedSongIndex = 0;
+unsigned int scrollTop = 0;
+unsigned int prevScrollTop = 0;
 
-#define SCREEN_WIDTH 320
-#define SCREEN_HEIGHT 480
+bool isPlaying = false;
 
-MCUFRIEND_kbv tft;
-unsigned long frameCount = 0;
-long prevRotation = -999;
-
-const uint8_t numberOfSongs = 20;
-Song songs[numberOfSongs];
+// -------- Setup -------- //
 
 void setup() {
-  // Serial.begin(9600);
-  // Serial.println("Init");
+  Serial.begin(115200);
+  Serial.println("Initializing...");
 
-  uint16_t ID = tft.readID();
-  if (ID == 0xD3D3) ID = 0x9486;
-
-  pinMode(Pin::CLK, INPUT);
-  pinMode(Pin::DT, INPUT);
-
-  tft.begin(ID);
-  tft.setRotation(2);
-
-  for (int i = 0; i < numberOfSongs; ++i) {
-    Song song;
-    song.title = "Song (" + String(i) + ")";
-    song.fileName = "song_" + String(i) + ".song";
-    songs[i] = song;
+  if (!oled.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println(F("SSD1306 allocation failed"));
+    for (;;)
+      ;  // Don't proceed, loop forever
   }
 
-  prev_CLK_state = digitalRead(Pin::CLK);
+  pinMode(Pin::SPEAKER, OUTPUT);
 
-  renderLibrary();
-  // playSong();
+  Serial.println("Initialized successfully");
 }
 
 void loop() {
-  CLK_state = digitalRead(Pin::CLK);
-  long newRotation = rotor.read();
+  long newRotation = floor(rotor.read() / 4.0f);
 
-  if (newRotation != prevRotation) {
-    prevRotation = newRotation;
+  // Is pressed?
+  if (digitalRead(Pin::SW) == LOW) {
+    playSong(songs[selectedSongIndex]);
   }
 
-  if (CLK_state != prev_CLK_state && CLK_state == HIGH) {
-    prevSelectedSongIndex = selectedSongIndex;
+  // Has the rotary encoder been rotated?
+  if (newRotation != prevRotation) {
+    // Clamp the value of newRotation
+    if (newRotation < 0) {
+      newRotation = 0;
+      rotor.write(0);
+    } else if (newRotation > numberOfSongs - 1) {
+      newRotation = numberOfSongs - 1;
+      rotor.write(numberOfSongs - 1);
+    }
 
-    if (digitalRead(Pin::DT) == HIGH) {
-      selectedSongIndex--;
+    if (newRotation == Dir::CLOCKWISE) {
       rotationDirection = Dir::CLOCKWISE;
     } else {
-      selectedSongIndex++;
       rotationDirection = Dir::COUNTER_CLOCKWISE;
     }
 
-    updateLibrary();
-  }
+    selectedSongIndex = newRotation;
+    prevRotation = newRotation;
 
-  prev_CLK_state = CLK_state;
-  frameCount++;
+    Serial.println(String(newRotation));
+    prevSelectedSongIndex = selectedSongIndex;
+    renderSongList();
+  }
 }
 
-void renderLibrary() {
-  tft.fillScreen(TFT_BLACK);
+void renderSongList() {
+  oled.clearDisplay();
 
-  tft.setTextSize(2);
+  for (int i = 0; i < numberOfSongs; ++i) {
+    int x = itemMarginLeft;
+    int y = (i + 1) * itemMarginTop + i * itemHeight;
 
-  for (uint8_t i = 0; i < numberOfSongs; ++i) {
-    if (i == max(scrollTop, 0)) {
-      tft.fillRect(10, 10 * i + 30 * i, SCREEN_WIDTH - 10, 30, TFT_WHITE);
-      tft.setTextColor(TFT_BLACK);
+    if (i == selectedSongIndex) {
+      oled.fillRect(x, y, itemWidth, itemHeight, WHITE);
+      oled.setTextColor(BLACK);
     } else {
-      tft.drawRect(10, 10 * i + 30 * i, SCREEN_WIDTH - 10, 30, TFT_WHITE);
-      tft.setTextColor(TFT_WHITE);
+      oled.drawRect(x, y, itemWidth, itemHeight, WHITE);
+      oled.setTextColor(WHITE);
     }
 
-    tft.setCursor(20, 10 * i + 30 * i + 7);
-    tft.print(songs[i].title);
-  }
-}
-
-void updateLibrary() {
-  if (prevScrollTop != scrollTop) {
-    // Re-render text
-  } else if (prevSelectedSongIndex != selectedSongIndex) {
-    int y = 40 * (prevSelectedSongIndex - prevScrollTop);
-    // Re-render previous selected item
-    tft.fillRect(10, y, SCREEN_WIDTH - 10, 30, TFT_BLACK);
-    tft.drawRect(10, y, SCREEN_WIDTH - 10, 30, TFT_WHITE);
-    tft.setTextColor(TFT_WHITE);
-    tft.setCursor(20, y + 7);
-    tft.print(songs[prevSelectedSongIndex].title);
-
-    // Re-render new selected item
-    y += 40 * (selectedSongIndex - prevSelectedSongIndex);
-    tft.fillRect(10, y, SCREEN_WIDTH - 10, 30, TFT_WHITE);
-    tft.setTextColor(TFT_BLACK);
-    tft.setCursor(20, y + 7);
-    tft.print(songs[selectedSongIndex].title);
+    oled.setCursor(x * 2, y + 3);
+    oled.print(songs[i].title);
   }
 
-  tone(Pin::SPEAKER, 1000, 50);
+  oled.display();
 }
 
-void playSong(Song song) {}
+void playSong(Song song) {
+  isPlaying = true;
+  int wholenote = (60000 * 4) / song.tempo;
+  int divider = 0;
+  int noteDuration = 0;
+
+  for (int thisNote = 0; thisNote < song.noteCount; thisNote += 2) {
+    divider = pgm_read_word_near(song.melody + thisNote + 1);
+
+    noteDuration = wholenote / abs(divider);
+
+    if (divider < 0) {
+      noteDuration *= 1.5;
+    }
+
+    tone(Pin::SPEAKER, pgm_read_word_near(song.melody + thisNote),
+         noteDuration * 0.9);
+    delay(noteDuration);
+    noTone(Pin::SPEAKER);
+  }
+
+  isPlaying = false;
+}
